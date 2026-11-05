@@ -108,6 +108,7 @@ struct config {
 
 	char *exe_path;
 	char *font_path;
+	char *charmap_path;
 	int font_face;
 	double transition_speed;
 	unsigned msg_skip_delay;

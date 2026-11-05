@@ -22,6 +22,7 @@
 
 #include "ai5.h"
 #include "game.h"
+#include "charmap.h"
 #include "gfx_private.h"
 #include "gfx.h"
 #include "memory.h"
@@ -329,6 +330,7 @@ unsigned _gfx_text_draw_glyph(SDL_Surface *dst, int x, int y, uint32_t ch)
 {
 	if (!cur_font)
 		return 0;
+	ch = charmap_apply(ch);
 	SDL_Rect damage;
 	if (game->bpp == 8)
 		return gfx_text_draw_glyph_indexed(dst, x, y, ch, &damage);
@@ -339,6 +341,7 @@ unsigned gfx_text_draw_glyph(int x, int y, unsigned i, uint32_t ch)
 {
 	if (!cur_font)
 		return 0;
+	ch = charmap_apply(ch);
 
 	SDL_Surface *dst = gfx_get_surface(i);
 
@@ -444,6 +447,7 @@ void gfx_text_set_weight(int weight)
 unsigned gfx_text_size_char(uint32_t ch)
 {
 	int minx, maxx, miny, maxy, advance;
+	ch = charmap_apply(ch);
 	TTF_GlyphMetrics32(cur_font->id, ch, &minx, &maxx, &miny, &maxy, &advance);
 	return advance;
 }

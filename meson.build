@@ -38,6 +38,7 @@ sources = [
   'src/asset.c',
   'src/backlog.c',
   'src/beyond.c',
+  'src/charmap.c',
   'src/classics.c',
   'src/cmdline.c',
   'src/cursor.c',

@@ -32,6 +32,7 @@
 
 #include "asset.h"
 #include "audio.h"
+#include "charmap.h"
 #include "cursor.h"
 #include "debug.h"
 #include "game.h"
@@ -215,6 +216,8 @@ static int cfg_handler(void *user, const char *section, const char *name, const 
 	// [AI5SDL2]
 	} else if (MATCH("AI5SDL2", "FONT")) {
 		config->font_path = strdup(value);
+	} else if (MATCH("AI5SDL2", "CHARMAP")) {
+		config->charmap_path = strdup(value);
 	} else if (MATCH("AI5SDL2", "FONTFACE")) {
 		config->font_face = atoi(value);
 	} else if (MATCH("AI5SDL2", "TRANSITIONSPEED")) {
@@ -331,6 +334,7 @@ static int cfg_handler(void *user, const char *section, const char *name, const 
 static void usage(void)
 {
 	printf("Usage: ai5 [options] [inifile-or-directory]\n");
+	printf("    --charmap=<file>               Remap half-width katakana (see include/charmap.h)\n");
 	printf("    --controller-cursor-speed=<n>  Set the cursor movement speed (default: 16)\n");
 	printf("    --controller-dead-zone=<n>     Set the dead zone for analog stick input (default: 0.15)\n");
 	printf("    --controller-disable           Disable controller input\n");
@@ -457,6 +461,7 @@ static bool set_game_from_config(void)
 enum {
 	LOPT_HELP = 256,
 	LOPT_VERSION,
+	LOPT_CHARMAP,
 	LOPT_CONTROLLER_CURSOR_SPEED,
 	LOPT_CONTROLLER_DEAD_ZONE,
 	LOPT_CONTROLLER_DISABLE,
@@ -501,6 +506,7 @@ int main(int argc, char *argv[])
 	while (1) {
 		static struct option long_options[] = {
 			{ "game", required_argument, 0, LOPT_GAME },
+			{ "charmap", required_argument, 0, LOPT_CHARMAP },
 			{ "controller-cursor-speed", required_argument, 0, LOPT_CONTROLLER_CURSOR_SPEED },
 			{ "controller-dead-zone", required_argument, 0, LOPT_CONTROLLER_DEAD_ZONE },
 			{ "controller-disable", no_argument, 0, LOPT_CONTROLLER_DISABLE },
@@ -568,6 +574,9 @@ int main(int argc, char *argv[])
 			debug = true;
 			debug_on_error = true;
 			debug_on_F12 = true;
+			break;
+		case LOPT_CHARMAP:
+			config.charmap_path = strdup(optarg);
 			break;
 		case LOPT_FONT:
 			config.font_path = strdup(optarg);
@@ -696,6 +705,7 @@ int main(int argc, char *argv[])
 	game->mem_init();
 	gfx_init(config.title);
 	gfx_text_init(config.font_path, config.font_face);
+	charmap_init(config.charmap_path);
 	input_init();
 	cursor_init(config.exe_path);
 	gfx_set_icon();

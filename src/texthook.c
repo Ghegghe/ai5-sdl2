@@ -23,6 +23,7 @@
 #include "ai5.h"
 #include "ai5/mes.h"
 
+#include "charmap.h"
 #include "memory.h"
 #include "texthook.h"
 
@@ -41,7 +42,7 @@ void texthook_commit(void)
 	if (!texthook_buf_ptr)
 		return;
 
-	string utf8 = sjis_cstring_to_utf8(texthook_buf, texthook_buf_ptr);
+	string utf8 = charmap_sjis_cstring_to_utf8(texthook_buf, texthook_buf_ptr);
 	utf8 = string_concat_cstring(utf8, "\n");
 	if (config.texthook_clipboard)
 		SDL_SetClipboardText(utf8);
