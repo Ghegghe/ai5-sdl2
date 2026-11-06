@@ -93,6 +93,10 @@ void gfx_blend_with_mask_color_to(int a_x, int a_y, int w, int h, unsigned a_i, 
 		int mask_h, uint8_t *mask);
 void gfx_invert_colors(int x, int y, int w, int h, unsigned i);
 void gfx_fill(int x, int y, int w, int h, unsigned i, uint32_t c);
+void gfx_save_rect(int x, int y, int w, int h, unsigned i);
+bool gfx_rect_saved(int x, int y, int w, int h, unsigned i);
+void gfx_restore_rect(void);
+bool gfx_text_visible(unsigned i);
 void gfx_swap_colors(int x, int y, int w, int h, unsigned i, uint32_t c1, uint32_t c2);
 void gfx_blend_fill(int x, int y, int w, int h, unsigned i, uint32_t c, uint8_t rate);
 void gfx_draw_cg(unsigned i, struct cg *cg);

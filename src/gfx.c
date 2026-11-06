@@ -360,8 +360,22 @@ void gfx_init(const char *name)
 #endif
 	if (config.controller.enabled)
 		SDL_CALL(SDL_InitSubSystem, SDL_INIT_GAMECONTROLLER);
+	// WINDOWSIZE=WxH in AI5SDL2.INI: initial window size (shrunk to fit the screen,
+	// keeping its proportions); the picture keeps the game's aspect ratio inside it
+	int win_w = gfx_view.w, win_h = gfx_view.h;
+	if (config.window_w > 0 && config.window_h > 0) {
+		win_w = config.window_w;
+		win_h = config.window_h;
+		SDL_Rect usable;
+		if (SDL_GetDisplayUsableBounds(0, &usable) == 0
+				&& (win_w > usable.w || win_h > usable.h)) {
+			double f = min((double)usable.w / win_w, (double)usable.h / win_h);
+			win_w = max(1, (int)(win_w * f));
+			win_h = max(1, (int)(win_h * f));
+		}
+	}
 	SDL_CTOR(SDL_CreateWindow, gfx.window, title,
-			SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, gfx_view.w, gfx_view.h,
+			SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, win_w, win_h,
 			SDL_WINDOW_RESIZABLE);
 	gfx.window_id = SDL_GetWindowID(gfx.window);
 	SDL_CTOR(SDL_CreateRenderer, gfx.renderer, gfx.window, -1, 0);
@@ -942,6 +956,82 @@ static void gfx_direct_copy(int src_x, int src_y, int w, int h, SDL_Surface *src
 	SDL_Rect src_r = { src_x, src_y, w, h };
 	SDL_Rect dst_r = { dst_x, dst_y, w, h };
 	SDL_CALL(SDL_BlitSurface, src, &src_r, dst, &dst_r);
+}
+
+/*
+ * A saved copy of a rectangle of a surface, put back later as it was
+ * (used for the automatic text pages, see vm_draw_text).
+ */
+static struct {
+	SDL_Surface *s;
+	SDL_Rect r;
+	unsigned i;
+} saved_rect;
+
+// the part of the rectangle that lies inside surface i (empty if none)
+static SDL_Rect rect_in_surface(int x, int y, int w, int h, unsigned i)
+{
+	SDL_Surface *s = gfx_get_surface(i);
+	SDL_Rect r = { x, y, w, h }, all = { 0, 0, s->w, s->h }, in = { 0, 0, 0, 0 };
+	SDL_IntersectRect(&r, &all, &in);
+	return in;
+}
+
+void gfx_save_rect(int x, int y, int w, int h, unsigned i)
+{
+	SDL_Surface *src = gfx_get_surface(i);
+	SDL_FreeSurface(saved_rect.s);
+	saved_rect.s = NULL;
+	SDL_Rect r = rect_in_surface(x, y, w, h, i);
+	if (r.w <= 0 || r.h <= 0)
+		return;
+	SDL_CTOR(SDL_CreateRGBSurfaceWithFormat, saved_rect.s, 0, r.w, r.h,
+			src->format->BitsPerPixel, src->format->format);
+	saved_rect.r = r;
+	saved_rect.i = i;
+	if (game->bpp == 8)
+		gfx_indexed_copy(r.x, r.y, r.w, r.h, src, 0, 0, saved_rect.s);
+	else
+		gfx_direct_copy(r.x, r.y, r.w, r.h, src, 0, 0, saved_rect.s);
+}
+
+// has gfx_save_rect saved this rectangle of this surface?
+bool gfx_rect_saved(int x, int y, int w, int h, unsigned i)
+{
+	SDL_Rect r = rect_in_surface(x, y, w, h, i);
+	return saved_rect.s && saved_rect.i == i && SDL_RectEquals(&saved_rect.r, &r);
+}
+
+// put back the rectangle saved by gfx_save_rect
+void gfx_restore_rect(void)
+{
+	int x = saved_rect.r.x, y = saved_rect.r.y, w = saved_rect.r.w, h = saved_rect.r.h;
+	unsigned i = saved_rect.i;
+	SDL_Surface *dst = gfx_get_surface(i);
+	if (game->bpp == 8)
+		gfx_indexed_copy(0, 0, w, h, saved_rect.s, x, y, dst);
+	else
+		gfx_direct_copy(0, 0, w, h, saved_rect.s, x, y, dst);
+	gfx_dirty(i, x, y, w, h);
+}
+
+/*
+ * Is the text drawn on surface i seen right away? Not while the display is frozen,
+ * not on a surface that is not the screen, and not when the text color looks like
+ * the background (palette faded out, or text drawn "invisible" and shown later).
+ */
+bool gfx_text_visible(unsigned i)
+{
+	if (gfx.hidden || i != gfx.screen)
+		return false;
+	SDL_Color fg = gfx.text.fg_color, bg = gfx.text.bg_color;
+	if (game->bpp == 8) {
+		// the colors the text is drawn with: the surface palette (as in glyph_blit)
+		SDL_Palette *pal = gfx_get_surface(i)->format->palette;
+		fg = pal->colors[gfx.text.fg & 0xff];
+		bg = pal->colors[gfx.text.bg & 0xff];
+	}
+	return fg.r != bg.r || fg.g != bg.g || fg.b != bg.b;
 }
 
 void gfx_copy(int src_x, int src_y, int w, int h, unsigned src_i, int dst_x, int dst_y,

@@ -218,6 +218,20 @@ static int cfg_handler(void *user, const char *section, const char *name, const 
 		config->font_path = strdup(value);
 	} else if (MATCH("AI5SDL2", "CHARMAP")) {
 		config->charmap_path = strdup(value);
+	} else if (MATCH("AI5SDL2", "YUME")) {
+		config->yume_path = strdup(value);
+	} else if (MATCH("AI5SDL2", "WORDWRAP")) {
+		config->word_wrap = !!atoi(value);
+	} else if (MATCH("AI5SDL2", "AUTOPAGE")) {
+		config->autopage = !!atoi(value);
+	} else if (MATCH("AI5SDL2", "WINDOWSIZE")) {
+		int w, h;
+		if (sscanf(value, "%dx%d", &w, &h) == 2 && w > 0 && h > 0) {
+			config->window_w = w;
+			config->window_h = h;
+		} else {
+			WARNING("Invalid AI5SDL2.WINDOWSIZE (expected WxH): %s", value);
+		}
 	} else if (MATCH("AI5SDL2", "FONTFACE")) {
 		config->font_face = atoi(value);
 	} else if (MATCH("AI5SDL2", "TRANSITIONSPEED")) {

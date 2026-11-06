@@ -1,1 +1,2 @@
 option('sdl_mixer', type : 'feature', value : 'disabled')
+option('win_icon', type : 'string', value : '', description : 'Icona .ico da incorporare in ai5.exe su Windows (percorso assoluto o relativo ai sorgenti)')

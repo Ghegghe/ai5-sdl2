@@ -109,6 +109,10 @@ struct config {
 	char *exe_path;
 	char *font_path;
 	char *charmap_path;
+	char *yume_path;
+	bool word_wrap;
+	bool autopage;
+	int window_w, window_h;
 	int font_face;
 	double transition_speed;
 	unsigned msg_skip_delay;

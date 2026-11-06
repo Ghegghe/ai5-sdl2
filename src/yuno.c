@@ -15,6 +15,7 @@
  */
 
 #include <stdlib.h>
+#include <string.h>
 #include <SDL.h>
 
 #include "nulib.h"
@@ -525,8 +526,45 @@ static uint32_t yume_text_loc_eng[] = {
 	0x60e00,
 };
 
+/*
+ * Dream text from a file (YUME= in AI5SDL2.INI), for translations: one line per
+ * screen, in the game's encoding (Shift-JIS, with the charmap applied), at most
+ * `max` lines. Without the option the text comes from the executable.
+ */
+static int read_yume_text_file(char **dst, int max)
+{
+	size_t size;
+	char *path = path_get_icase(config.yume_path);
+	uint8_t *data = path ? file_read(path, &size) : NULL;
+	free(path);
+	if (!data) {
+		WARNING("Failed to read dream text \"%s\"", config.yume_path);
+		return -1;
+	}
+	// lines end with LF or CRLF; empty lines are kept (they are screens too)
+	int n = 0;
+	size_t start = 0;
+	for (; start < size && n < max; n++) {
+		size_t end = start;
+		while (end < size && data[end] != '\n')
+			end++;
+		size_t len = end - start - (end > start && data[end - 1] == '\r');
+		dst[n] = xmalloc(len + 1);
+		memcpy(dst[n], data + start, len);
+		dst[n][len] = '\0';
+		start = end + 1;
+	}
+	if (start < size)
+		WARNING("Dream text: only the first %d lines are used", max);
+	free(data);
+	return n;
+}
+
 static int read_yume_text(char **dst)
 {
+	if (config.yume_path)
+		return read_yume_text_file(dst, 17);
+
 	size_t size;
 	uint8_t *exe = file_read(config.exe_path, &size);
 
@@ -560,6 +598,8 @@ static void util_yume(struct param_list *params)
 {
 	char *text[17];
 	int nr_lines = read_yume_text(text);
+	if (nr_lines < 0)
+		nr_lines = 0;  // no text (file or executable missing): the loops below must not run
 
 	const uint16_t start_x = mem_get_sysvar16(mes_sysvar16_text_start_x);
 	const uint16_t start_y = mem_get_sysvar16(mes_sysvar16_text_start_y);

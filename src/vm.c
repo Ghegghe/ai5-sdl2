@@ -40,6 +40,7 @@
 #include "input.h"
 #include "memory.h"
 #include "menu.h"
+#include "sys.h"
 #include "texthook.h"
 #include "vm_private.h"
 
@@ -493,35 +494,116 @@ bool char_is_closer(const char *_ch)
 
 bool han_line_breaks = false;
 
+/*
+ * Optional behaviour for fan translations (AI5SDL2.INI, off by default).
+ * Translated text is usually longer than the original: with these options the
+ * scripts need no hand-made line breaks or page breaks.
+ *
+ *   WORDWRAP=1   break lines between words instead of between characters.
+ *   AUTOPAGE=1   when the text goes past the bottom of the text box, add a page:
+ *                wait for a click (as System.wait() does), put the box back as it
+ *                was when the page started, and go on at the top. Only when the
+ *                text is drawn on the visible screen.
+ */
+
+// was the last character drawn a space? (a word can continue in the next statement)
+static bool text_after_space = true;
+
+static unsigned char_width(const char *ch, uint16_t char_space, unsigned mult)
+{
+	return SJIS_2BYTE(*ch) ? char_space / mult : char_space / (mult * 2);
+}
+
+// width of the word at `text`, up to the next space or the end of the string
+static unsigned word_width(const char *text, uint16_t char_space, unsigned mult)
+{
+	unsigned w = 0;
+	for (; *text && *text != ' '; text += SJIS_2BYTE(*text) && text[1] ? 2 : 1)
+		w += char_width(text, char_space, mult);
+	return w;
+}
+
+// the text box in pixels, for gfx_save_rect / gfx_restore_rect
+#define TEXT_BOX(mult) \
+	mem_get_sysvar16(mes_sysvar16_text_start_x) * (mult), \
+	mem_get_sysvar16(mes_sysvar16_text_start_y), \
+	(mem_get_sysvar16(mes_sysvar16_text_end_x) - mem_get_sysvar16(mes_sysvar16_text_start_x) + 1) * (mult), \
+	mem_get_sysvar16(mes_sysvar16_text_end_y) - mem_get_sysvar16(mes_sysvar16_text_start_y) + 1
+
+/*
+ * Go to the next line, or to a new page if the line would end below the box.
+ * Returns true if a new page was started.
+ */
+static bool text_newline(uint16_t *x, uint16_t *y, uint16_t surface, unsigned mult)
+{
+	const uint16_t start_y = mem_get_sysvar16(mes_sysvar16_text_start_y);
+	const uint16_t end_y = mem_get_sysvar16(mes_sysvar16_text_end_y);
+	const uint16_t glyph_h = mem_get_sysvar16(mes_sysvar16_char_space);
+	*x = mem_get_sysvar16(mes_sysvar16_text_start_x);
+	*y += mem_get_sysvar16(mes_sysvar16_line_space);
+	if (!config.autopage || *y + glyph_h <= end_y + 1 || !gfx_text_visible(surface)
+			|| !gfx_rect_saved(TEXT_BOX(mult), surface))
+		return false;
+
+	struct param_list no_params = { .nr_params = 0 };
+	sys_wait(&no_params);
+	gfx_restore_rect();
+	*y = start_y;
+	return true;
+}
+
 void vm_draw_text(const char *text, unsigned mult)
 {
 	const uint16_t surface = mem_get_sysvar16(mes_sysvar16_dst_surface);
 	const uint16_t start_x = mem_get_sysvar16(mes_sysvar16_text_start_x);
+	const uint16_t start_y = mem_get_sysvar16(mes_sysvar16_text_start_y);
 	const uint16_t end_x = mem_get_sysvar16(mes_sysvar16_text_end_x);
 	const uint16_t char_space = mem_get_sysvar16(mes_sysvar16_char_space);
 	const uint16_t line_space = mem_get_sysvar16(mes_sysvar16_line_space);
 	uint16_t x = mem_get_sysvar16(mes_sysvar16_text_cursor_x);
 	uint16_t y = mem_get_sysvar16(mes_sysvar16_text_cursor_y);
 	bool last_char_is_close = false;
+	bool wrapped = false;
+
+	// a page starts: remember how the box looks, for the extra pages
+	if (config.autopage && x == start_x && y == start_y)
+		gfx_save_rect(TEXT_BOX(mult), surface);
+	// the start of a line counts as after a space (a new word begins)
+	if (x == start_x)
+		text_after_space = true;
+
 	while (*text) {
 		int ch;
-		bool zenkaku = SJIS_2BYTE(*text);
-		uint16_t this_char_space = zenkaku ? (char_space / mult): (char_space / (mult * 2));
+		bool paged = false;
+		uint16_t this_char_space = char_width(text, char_space, mult);
+
+		// word wrap: a word that does not fit in the rest of the line starts a new one
+		if (config.word_wrap && *text != ' ' && text_after_space && x != start_x
+				&& x + word_width(text, char_space, mult) > end_x) {
+			paged = text_newline(&x, &y, surface, mult);
+			wrapped = true;
+		}
+
 		uint16_t this_x = x;
 		if (x + (han_line_breaks ? this_char_space : char_space) > end_x) {
-			x = start_x;
-			y += line_space;
+			paged = text_newline(&x, &y, surface, mult);
+			wrapped = config.word_wrap;
 		}
+
+		// word wrap: a line broken automatically does not start with a space
+		if (wrapped && *text == ' ') {
+			text++;
+			continue;
+		}
+		wrapped = false;
 
 		// opener at end of line: drop to next line
-		if (x + this_char_space * 2 > end_x && char_is_opener(text)) {
-			x = start_x;
-			y += line_space;
-		}
+		if (x + this_char_space * 2 > end_x && char_is_opener(text))
+			paged = text_newline(&x, &y, surface, mult);
 
 		// closer at start of line: go to last column of previous line
-		// (game allows some extra space for this)
-		if (x == start_x && !last_char_is_close && char_is_closer(text)) {
+		// (game allows some extra space for this; not across pages)
+		if (!paged && x == start_x && !last_char_is_close && char_is_closer(text)) {
 			x = this_x;
 			y -= line_space;
 			last_char_is_close = true;
@@ -529,6 +611,7 @@ void vm_draw_text(const char *text, unsigned mult)
 			last_char_is_close = false;
 		}
 
+		text_after_space = *text == ' ';
 		text = sjis_char2unicode(text, &ch);
 		gfx_text_draw_glyph(x * mult, y, surface, ch);
 		x += this_char_space;

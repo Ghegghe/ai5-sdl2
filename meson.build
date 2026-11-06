@@ -119,6 +119,16 @@ if get_option('buildtype').startswith('release')
   winsys = 'windows'
 endif
 
+win_icon = get_option('win_icon')
+if host_machine.system() == 'windows' and win_icon != ''
+  icon_path = meson.project_source_root() / win_icon
+  icon_conf = configuration_data()
+  icon_conf.set('ICON', icon_path.replace('\\', '/'))
+  icon_rc = configure_file(input : 'src/icon.rc.in', output : 'icon.rc', configuration : icon_conf)
+  sources += import('windows').compile_resources(icon_rc, depend_files : files(icon_path))
+  message('Embedding icon ' + icon_path)
+endif
+
 executable('ai5', sources,
   dependencies : deps,
   c_args : ['-Wno-unused-parameter'],
